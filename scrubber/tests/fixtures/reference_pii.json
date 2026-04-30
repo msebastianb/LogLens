@@ -1,0 +1,361 @@
+[
+  {
+    "text": "My name is John Smith and I live at 123 Maple Street, Austin, Texas 78701.",
+    "entities": [
+      {
+        "category": "private_person",
+        "value": "John Smith"
+      },
+      {
+        "category": "private_address",
+        "value": "123 Maple Street"
+      },
+      {
+        "category": "private_address",
+        "value": "Austin"
+      },
+      {
+        "category": "private_address",
+        "value": "Texas"
+      },
+      {
+        "category": "private_address",
+        "value": "78701"
+      }
+    ]
+  },
+  {
+    "text": "Please contact Jane Doe at jane.doe@example.com for more information.",
+    "entities": [
+      {
+        "category": "private_person",
+        "value": "Jane Doe"
+      },
+      {
+        "category": "private_email",
+        "value": "jane.doe@example.com"
+      }
+    ]
+  },
+  {
+    "text": "Call me at (555) 123-4567 or reach Mary Johnson at +44 20 7946 0958.",
+    "entities": [
+      {
+        "category": "private_phone",
+        "value": "(555) 123-4567"
+      },
+      {
+        "category": "private_person",
+        "value": "Mary Johnson"
+      },
+      {
+        "category": "private_phone",
+        "value": "+44 20 7946 0958"
+      }
+    ]
+  },
+  {
+    "text": "The account holder Robert Williams has account number 4532-1234-5678.",
+    "entities": [
+      {
+        "category": "private_person",
+        "value": "Robert Williams"
+      },
+      {
+        "category": "account_number",
+        "value": "4532-1234-5678"
+      }
+    ]
+  },
+  {
+    "text": "User emily.chen@corp.org submitted the request from IP 192.168.1.1.",
+    "entities": [
+      {
+        "category": "private_email",
+        "value": "emily.chen@corp.org"
+      },
+      {
+        "category": "private_url",
+        "value": "192.168.1.1"
+      }
+    ]
+  },
+  {
+    "text": "Patient David Brown, DOB 14 March 1985, lives at 45 Oak Avenue, London.",
+    "entities": [
+      {
+        "category": "private_person",
+        "value": "David Brown"
+      },
+      {
+        "category": "private_date",
+        "value": "14 March 1985"
+      },
+      {
+        "category": "private_address",
+        "value": "45 Oak Avenue"
+      },
+      {
+        "category": "private_address",
+        "value": "London"
+      }
+    ]
+  },
+  {
+    "text": "Username: michael_t | Email: michael.thompson@mail.net | Phone: 800-555-0199",
+    "entities": [
+      {
+        "category": "private_person",
+        "value": "michael_t"
+      },
+      {
+        "category": "private_email",
+        "value": "michael.thompson@mail.net"
+      },
+      {
+        "category": "private_phone",
+        "value": "800-555-0199"
+      }
+    ]
+  },
+  {
+    "text": "SSN on file for Patricia Garcia: 078-05-1120.",
+    "entities": [
+      {
+        "category": "private_person",
+        "value": "Patricia Garcia"
+      },
+      {
+        "category": "account_number",
+        "value": "078-05-1120"
+      }
+    ]
+  },
+  {
+    "text": "Card holder: Kevin O'Brien, card 4111 1111 1111 1111 exp 09/27 CVV 123.",
+    "entities": [
+      {
+        "category": "private_person",
+        "value": "Kevin O'Brien"
+      },
+      {
+        "category": "account_number",
+        "value": "4111 1111 1111 1111"
+      }
+    ]
+  },
+  {
+    "text": "The engineer Sarah Lee can be reached at s.lee@devteam.io.",
+    "entities": [
+      {
+        "category": "private_person",
+        "value": "Sarah Lee"
+      },
+      {
+        "category": "private_email",
+        "value": "s.lee@devteam.io"
+      }
+    ]
+  },
+  {
+    "text": "Billing address: Tom Harrison, 789 Pine Road, Chicago, IL 60601.",
+    "entities": [
+      {
+        "category": "private_person",
+        "value": "Tom Harrison"
+      },
+      {
+        "category": "private_address",
+        "value": "789 Pine Road"
+      },
+      {
+        "category": "private_address",
+        "value": "Chicago"
+      },
+      {
+        "category": "private_address",
+        "value": "IL"
+      },
+      {
+        "category": "private_address",
+        "value": "60601"
+      }
+    ]
+  },
+  {
+    "text": "Contact support via support@helpdesk.example.com or call 1-800-123-4567.",
+    "entities": [
+      {
+        "category": "private_email",
+        "value": "support@helpdesk.example.com"
+      },
+      {
+        "category": "private_phone",
+        "value": "1-800-123-4567"
+      }
+    ]
+  },
+  {
+    "text": "The report was filed by Dr. Amanda Clarke on behalf of client James Ford.",
+    "entities": [
+      {
+        "category": "private_person",
+        "value": "Amanda Clarke"
+      },
+      {
+        "category": "private_person",
+        "value": "James Ford"
+      }
+    ]
+  },
+  {
+    "text": "Delivery address: 22 Baker Street, London, NW1 6XE for Christopher Adams.",
+    "entities": [
+      {
+        "category": "private_address",
+        "value": "22 Baker Street"
+      },
+      {
+        "category": "private_address",
+        "value": "London"
+      },
+      {
+        "category": "private_address",
+        "value": "NW1 6XE"
+      },
+      {
+        "category": "private_person",
+        "value": "Christopher Adams"
+      }
+    ]
+  },
+  {
+    "text": "Login attempt for user nathaniel.brooks@secure.net from 10.0.0.42.",
+    "entities": [
+      {
+        "category": "private_email",
+        "value": "nathaniel.brooks@secure.net"
+      },
+      {
+        "category": "private_url",
+        "value": "10.0.0.42"
+      }
+    ]
+  },
+  {
+    "text": "Alice Johnson's mobile is +1 (212) 555-7890 and home is +1 (310) 555-2345.",
+    "entities": [
+      {
+        "category": "private_person",
+        "value": "Alice Johnson"
+      },
+      {
+        "category": "private_phone",
+        "value": "+1 (212) 555-7890"
+      },
+      {
+        "category": "private_phone",
+        "value": "+1 (310) 555-2345"
+      }
+    ]
+  },
+  {
+    "text": "Ref #TX-2048 for account holder Maria Santos, IBAN GB29NWBK60161331926819.",
+    "entities": [
+      {
+        "category": "private_person",
+        "value": "Maria Santos"
+      }
+    ]
+  },
+  {
+    "text": "Registered email on file: oliver.reed@company.org, phone: 07911 123456.",
+    "entities": [
+      {
+        "category": "private_email",
+        "value": "oliver.reed@company.org"
+      },
+      {
+        "category": "private_phone",
+        "value": "07911 123456"
+      }
+    ]
+  },
+  {
+    "text": "New user signup: Full name Benjamin Turner, email b.turner@example.co.uk.",
+    "entities": [
+      {
+        "category": "private_person",
+        "value": "Benjamin Turner"
+      },
+      {
+        "category": "private_email",
+        "value": "b.turner@example.co.uk"
+      }
+    ]
+  },
+  {
+    "text": "Password reset requested for account charlotte.white@internal.net.",
+    "entities": [
+      {
+        "category": "private_email",
+        "value": "charlotte.white@internal.net"
+      }
+    ]
+  },
+  {
+    "text": "The report lists Diana Prince at 55 Freedom Avenue, New York, NY 10001.",
+    "entities": [
+      {
+        "category": "private_person",
+        "value": "Diana Prince"
+      },
+      {
+        "category": "private_address",
+        "value": "55 Freedom Avenue"
+      },
+      {
+        "category": "private_address",
+        "value": "New York"
+      },
+      {
+        "category": "private_address",
+        "value": "NY"
+      },
+      {
+        "category": "private_address",
+        "value": "10001"
+      }
+    ]
+  },
+  {
+    "text": "Transaction initiated by ethan.hunt@agency.gov from device 00:1B:44:11:3A:B7.",
+    "entities": [
+      {
+        "category": "private_email",
+        "value": "ethan.hunt@agency.gov"
+      }
+    ]
+  },
+  {
+    "text": "Emergency contact for Fiona Grant: fiona.grant@nhs.uk, +44 7700 900123.",
+    "entities": [
+      {
+        "category": "private_person",
+        "value": "Fiona Grant"
+      },
+      {
+        "category": "private_email",
+        "value": "fiona.grant@nhs.uk"
+      },
+      {
+        "category": "private_phone",
+        "value": "+44 7700 900123"
+      }
+    ]
+  },
+  {
+    "text": "Server logs show no PII or personal identifiers in this line: INFO app started.",
+    "entities": []
+  }
+]

@@ -1,0 +1,120 @@
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    profiles: ["app", "dev", "test"]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - HTTPS_ONLY=${HTTPS_ONLY:-false}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - loglens_net
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    profiles: ["app", "dev", "test"]
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - SESSION_TTL_SECONDS=${SESSION_TTL_SECONDS:-28800}
+      - LOGIN_RATE_LIMIT_MAX=${LOGIN_RATE_LIMIT_MAX:-5}
+      - BCRYPT_ROUNDS=${BCRYPT_ROUNDS:-12}
+      - OIDC_ISSUER_URL=${OIDC_ISSUER_URL:-}
+      - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_MODEL=${LLM_MODEL:-gpt-5.4-mini}
+      - MAX_LOG_SIZE_MB=${MAX_LOG_SIZE_MB:-10}
+      - SCRUBBER_TIMEOUT_MS=${SCRUBBER_TIMEOUT_MS:-30000}
+      - HTTPS_ONLY=${HTTPS_ONLY:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      scrubber:
+        condition: service_healthy
+    networks:
+      - loglens_net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  scrubber:
+    build:
+      context: ./scrubber
+      dockerfile: Dockerfile
+    profiles: ["app", "dev", "test"]
+    # NO ports: mapping — reachable only via http://scrubber:8001 on loglens_net
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # NER-based PII detection is disabled by default.
+      # The NER model (openai/privacy-filter) runs at ~130 chars/sec on
+      # CPU — a 500 KB log takes over an hour.  Only set to "true" when a
+      # CUDA-capable GPU is available (and the image includes PyTorch+CUDA).
+      - NER_ENABLED=${NER_ENABLED:-false}
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    networks:
+      - loglens_net
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+      start_period: 600s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-loglens}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-changeme}
+      - POSTGRES_DB=${POSTGRES_DB:-loglens}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - loglens_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-loglens} -d ${POSTGRES_DB:-loglens}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    # No persistence — satisfies PRD constraint: no log data written to disk
+    command: redis-server --save "" --appendonly no
+    networks:
+      - loglens_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  loglens_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  hf_cache:

@@ -1,0 +1,55 @@
+# Nginx dev config — proxies everything to Vite dev server + API directly
+# Replaces the production template when using docker-compose.dev.yml
+# [Source: architecture.md#development-workflow]
+
+server {
+    listen 80;
+    server_name _;
+
+    # Expose health check endpoint directly from API (not prefixed with /api/)
+    location = /health {
+        proxy_pass http://api:3000/health;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # Proxy API requests to Fastify running on host
+    location /api/ {
+        proxy_pass http://api:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_read_timeout 600s;
+    }
+
+    # Proxy WebSocket connections
+    location /ws/ {
+        proxy_pass http://api:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_read_timeout 3600s;
+    }
+
+    # Proxy Vite HMR WebSocket
+    location /vite-hmr {
+        proxy_pass http://host.docker.internal:5173;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+    }
+
+    # All other requests go to Vite dev server on host machine
+    location / {
+        proxy_pass http://host.docker.internal:5173;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}

@@ -1,0 +1,39 @@
+# ─── Node ──────────────────────────────────────────────
+node_modules/
+dist/
+.next/
+build/
+*.tsbuildinfo
+
+# ─── Python ────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ─── Environment ───────────────────────────────────────
+.env
+.env.local
+.env.*.local
+# .env.dev and .env.test are committed with safe defaults
+
+# ─── Editor ────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# ─── Test output ───────────────────────────────────────
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# ─── Docker ────────────────────────────────────────────
+# Keep docker-compose files tracked
+.playwright-mcp/

@@ -1,0 +1,65 @@
+# docker-compose.dev.yml — Development overrides for Story 1.1
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# What this changes from the base compose:
+#   api    — mounts ./api/src, runs tsx watch for hot reload
+#   scrubber — mounts ./scrubber, runs uvicorn --reload
+#   nginx  — replaces nginx SPA proxy with Vite dev server proxy on port 5173
+#
+# [Source: architecture.md#development-workflow]
+
+services:
+  api:
+    # Override CMD to use tsx hot-reload
+    command: npx tsx watch src/main.ts
+    # In dev, don't block API startup on scrubber health — NER model takes 30-60s to load
+    depends_on:
+      scrubber:
+        condition: service_started
+    # Override NODE_ENV so the JWT cookie is NOT marked Secure (HTTP dev stack)
+    environment:
+      - NODE_ENV=development
+    # Mount source for live code changes
+    volumes:
+      - ./api/src:/app/src:cached
+    # Expose API directly during dev for Vitest + Playwright
+    ports:
+      - "3000:3000"
+
+  scrubber:
+    # 2 workers: one handles NER scrub (GIL-heavy), other stays free for health checks
+    # Note: --reload is incompatible with --workers; live reload via watchfiles is dropped in dev
+    command: uvicorn main:app --host 0.0.0.0 --port 8001 --workers 2
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - NER_ENABLED=${NER_ENABLED:-false}
+      # Limit PyTorch/OpenMP threads per worker to cap memory and CPU usage
+      - OMP_NUM_THREADS=4
+      - MKL_NUM_THREADS=4
+    # Mount source for live code changes
+    volumes:
+      - ./scrubber:/app:cached
+    # Expose scrubber directly during dev
+    ports:
+      - "8001:8001"
+
+  postgres:
+    # Expose to host so Vitest integration tests can connect directly
+    # Using 5433 to avoid conflicting with a local PostgreSQL instance on the default 5432 port.
+    ports:
+      - "5433:5432"
+
+  redis:
+    # Expose to host so Vitest integration tests can connect directly
+    ports:
+      - "6379:6379"
+
+  nginx:
+    # In dev, nginx forwards / to the Vite dev server on the host machine.
+    # Override default nginx.conf.template with a dev-specific template.
+    volumes:
+      - ./docker/nginx.dev.conf.template:/etc/nginx/templates/default.conf.template:ro
+    ports:
+      - "8080:80"
