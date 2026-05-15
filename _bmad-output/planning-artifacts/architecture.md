@@ -175,7 +175,7 @@ pip install fastapi "uvicorn[standard]" transformers torch \
 │   └── src/
 │       ├── routes/
 │       ├── plugins/
-│       ├── services/  # llm-provider/, loki-client/, scrub-cache/
+│       ├── services/  # llm-provider/, loki-client/, scrub-cache/, tokenizer.ts
 │       └── db/        # Drizzle schema + migrations
 ├── scrubber/          # FastAPI Python scrubbing service
 │   ├── main.py
@@ -264,11 +264,14 @@ pip install fastapi "uvicorn[standard]" transformers torch \
 - Default model: `gpt-5.4-mini` (400K context window, 128K max output tokens) — configurable via `LLM_MODEL` env var
 
 **Chunked Analysis (large logs):**
-- Logs exceeding the model's context window (MAX_CHUNK_CHARS = 1,570,000 chars ≈ 392K tokens for gpt-5.4-mini) are split into chunks at newline boundaries
-- Each chunk is analysed independently with a per-chunk prompt indicating chunk N of M
-- After all chunks are analysed, a merge pass consolidates partial results: sums error counts, de-duplicates anomalies, selects best root cause hypothesis, sorts timeline, and merges next steps
-- SSE `event: progress` messages report `{ stage: 'analysing'|'merging', totalChunks, currentChunk }` for multi-chunk jobs
-- Single-chunk fast path when log fits within one chunk (most common case)
+- Chunk size is token-based, not character-based. `ANALYSIS_MAX_CHUNK_TOKENS` env var (default `260000`) sets the per-chunk token budget including full prompt overhead (instructions + schema + chunk note). Set to `0` to disable chunking.
+- Token counting uses `js-tiktoken` (`api/src/services/tokenizer.ts`) with the encoding matching `LLM_MODEL`; falls back to `o200k_base` for unknown models. Prompt overhead is measured once at startup; each log line is counted once (O(n)) — no re-tokenization as chunks grow.
+- Logs are split at newline boundaries. Lines that individually exceed the budget are pushed as single-line chunks.
+- Each chunk is analysed independently with a per-chunk prompt indicating chunk N of M.
+- After all chunks are analysed, partial results are grouped into merge batches (each batch also token-budgeted) and consolidated in a multi-pass loop until a single result remains: sums error counts, de-duplicates anomalies, selects best root cause hypothesis, sorts timeline, merges next steps.
+- SSE `event: progress` messages report `{ stage: 'preparing'|'analysing'|'merging', totalChunks, currentChunk }`. The `preparing` event fires immediately when the stream opens (before any heavy processing) to keep the nginx/client connection alive.
+- Single-chunk fast path when the full log fits within one token budget (most common case for small files).
+- Nginx `proxy_read_timeout` is set to `600s` on the `/api/v1/analysis-jobs/*/stream` location block to accommodate multi-chunk large-file analysis.
 
 **Loki Live Tail — WebSocket:**
 - Fastify route `ws /api/v1/loki/tail` proxies Loki `/loki/api/v1/tail` WebSocket upstream

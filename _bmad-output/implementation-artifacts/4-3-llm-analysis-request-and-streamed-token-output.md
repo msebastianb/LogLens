@@ -80,7 +80,18 @@ So that I get immediate feedback and don't wait for a full response before seein
   - [x] `parseAnalysisJson`: strips ```json markdown fences before parsing
   - [x] `parseAnalysisJson`: throws on non-JSON input
 
-- [x] Task 6 — Finalize
+- [x] Task 6 — Token-based chunking for large log files
+  - [x] Install `js-tiktoken` dependency
+  - [x] Create `api/src/services/tokenizer.ts` — `createTokenCounter(model)` returns a cached token-count function using `encodingForModel()` with `o200k_base` fallback
+  - [x] Add `ANALYSIS_MAX_CHUNK_TOKENS` env var (default `260000`; `0` = disabled) to `api/src/config/env.ts` and `docker-compose.yml`
+  - [x] Implement `buildChunkPrompt()`, `buildChunkPromptForBudget()`, `buildMergePrompt()` in `analysis.ts`
+  - [x] Implement `splitLogIntoChunks(text, maxTokens)` — O(n) incremental token counting; prompt overhead computed once at module load
+  - [x] Implement `createMergeBatches(partialResults, maxTokens)` — groups partial JSON results into token-budgeted batches for the merge prompt
+  - [x] Multi-pass merge loop: repeat merge until `currentResults.length === 1`
+  - [x] Emit `event: progress` with `{ stage: 'preparing' }` immediately on stream open (before tokenisation) to prevent nginx idle timeout
+  - [x] Increase nginx `proxy_read_timeout` to `600s` on all three API location blocks
+
+- [x] Task 7 — Finalize
   - [x] Run `pnpm --filter api test` — all pass
   - [x] Story → review, sprint-status updated
 
@@ -124,26 +135,34 @@ Value: JSON string
 
 Use `redis.set(key, JSON.stringify(job), 'EX', env.SESSION_TTL_SECONDS)` and `redis.get(key)` then `JSON.parse`. Import `redis` from `'../services/redisClient.js'` and `env` from `'../config/env.js'`.
 
-### Prompt template
+### Prompt templates
 
-Build the analysis prompt from the scrubbed text:
+The analysis prompt is built by `buildChunkPrompt(scrubbedText, chunkIndex, totalChunks)`. When `totalChunks > 1` a chunk-note line is injected. A budget-measurement variant `buildChunkPromptForBudget(scrubbedText)` uses a worst-case chunk-note so the token count is always conservative.
+
+A merge prompt `buildMergePrompt(partialResults[])` is used for the consolidation pass.
 
 ```typescript
-function buildPrompt(scrubbedText: string): string {
+function buildChunkPrompt(scrubbedText: string, chunkIndex: number, totalChunks: number): string {
+  const chunkNote = totalChunks > 1
+    ? `This is chunk ${chunkIndex + 1} of ${totalChunks}. Analyse only this portion.`
+    : ''
   return [
     'You are a log analysis expert. Analyse the following scrubbed log content.',
+    chunkNote,
     'Respond ONLY with a JSON object (no markdown fences, no prose) matching this schema:',
-    '{ "errors": [{ "type": string, "count": number, "distribution": string }],',
-    '  "anomalies": [string],',
-    '  "rootCause": { "hypothesis": string, "confidence": "High"|"Medium"|"Low", "evidenceExcerpts": [string] },',
-    '  "timeline": [{ "timestamp": string, "component": string, "event": string }],',
-    '  "nextSteps": [string] }',
+    '{ "errors": [...], "anomalies": [...], "rootCause": {...}, "timeline": [...], "nextSteps": [...] }',
     '',
     'Log content:',
     scrubbedText,
   ].join('\n')
 }
 ```
+
+### Token-based chunking
+
+`splitLogIntoChunks(text, maxTokens)` splits log text so that each chunk's full prompt stays under `maxTokens`. It counts tokens with `js-tiktoken` via `api/src/services/tokenizer.ts`. Prompt overhead (fixed instructions + schema) is computed once at module load; each line is tokenised exactly once (O(n)).
+
+`createMergeBatches(partialResults, maxTokens)` groups partial JSON results into merge batches that also fit the token budget for the merge prompt, enabling multi-pass merging for very large files.
 
 ### `parseAnalysisJson` — strip markdown fences
 

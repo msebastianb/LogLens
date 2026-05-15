@@ -1,5 +1,11 @@
 # Deferred Work
 
+## Deferred from: large-file chunking implementation in story 4.3 (2026-05-15)
+
+- D1 — `js-tiktoken` tokenizer is initialised at module scope in `api/src/routes/analysis.ts` (`PROMPT_OVERHEAD_TOKENS = countPromptTokens(buildChunkPromptForBudget(''))`) — this executes synchronously during module load, adding a small startup cost (~50ms). Consider lazy-initialising behind a getter if startup time becomes a concern.
+- D2 — Single lines that individually exceed `ANALYSIS_MAX_CHUNK_TOKENS` are pushed as oversized single-line chunks rather than byte-split. The LLM will see a slightly over-budget prompt. A future story could byte-split oversized lines at UTF-8 character boundaries.
+- D3 — Token count per line uses `countPromptTokens(segment)` which measures the segment in isolation; cross-boundary tokenisation effects (rare at GPT-style BPE) may cause the assembled chunk to slightly over- or under-count. The 2% safety margin in `splitLogIntoChunks` mitigates this.
+
 ## Deferred from: code review of 1-1-docker-compose-stack-with-per-service-env-validation (2026-04-28)
 
 - D1 — nginx service has no Docker healthcheck — AC1 "reaches healthy state" technically unverifiable — non-breaking
