@@ -30,6 +30,7 @@ import { llmProviderFactory, ConfigurationError } from '../services/llmProvider.
 import * as scrubCache from '../services/scrubCache.js'
 import { redis } from '../services/redisClient.js'
 import { parseAnalysisJson } from '../services/analysisOutputSchema.js'
+import { createTokenCounter } from '../services/tokenizer.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -54,11 +55,14 @@ function sendEvent(raw: ServerResponse, event: string, data: unknown): void {
   raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
 }
 
-// gpt-5.4-mini: 400 K context window, 128 K max output tokens.
-// 1 token ≈ 4 chars on average.
-// Reserve ~8 K tokens for the system prompt overhead,
-// leaving ~392 K input tokens ≈ 1.57 M chars per chunk.
-const MAX_CHUNK_CHARS = 1_570_000
+// Analysis chunk size is configurable via env so deployments can align
+// chunking behavior with model context limits.
+// Set ANALYSIS_MAX_CHUNK_TOKENS=0 to disable chunking.
+const MAX_CHUNK_TOKENS = env.ANALYSIS_MAX_CHUNK_TOKENS > 0
+  ? env.ANALYSIS_MAX_CHUNK_TOKENS
+  : Number.MAX_SAFE_INTEGER
+const countPromptTokens = createTokenCounter(env.LLM_MODEL)
+const CHUNK_NOTE_BUDGET = 'This is chunk 99999 of 99999. Analyse only this portion.'
 
 function buildChunkPrompt(scrubbedText: string, chunkIndex: number, totalChunks: number): string {
   const chunkNote = totalChunks > 1
@@ -68,6 +72,22 @@ function buildChunkPrompt(scrubbedText: string, chunkIndex: number, totalChunks:
   return [
     'You are a log analysis expert. Analyse the following scrubbed log content.',
     chunkNote,
+    'Respond ONLY with a JSON object (no markdown fences, no prose) matching this schema:',
+    '{ "errors": [{ "type": string, "count": number, "distribution": string }],',
+    '  "anomalies": [string],',
+    '  "rootCause": { "hypothesis": string, "confidence": "High"|"Medium"|"Low", "evidenceExcerpts": [string] },',
+    '  "timeline": [{ "timestamp": string, "component": string, "event": string }],',
+    '  "nextSteps": [string] }',
+    '',
+    'Log content:',
+    scrubbedText,
+  ].join('\n')
+}
+
+function buildChunkPromptForBudget(scrubbedText: string): string {
+  return [
+    'You are a log analysis expert. Analyse the following scrubbed log content.',
+    CHUNK_NOTE_BUDGET,
     'Respond ONLY with a JSON object (no markdown fences, no prose) matching this schema:',
     '{ "errors": [{ "type": string, "count": number, "distribution": string }],',
     '  "anomalies": [string],',
@@ -103,27 +123,93 @@ function buildMergePrompt(partialResults: string[]): string {
   ].join('\n')
 }
 
-/** Split text into chunks of at most `maxChars`, breaking at newlines. */
-function splitLogIntoChunks(text: string, maxChars: number): string[] {
-  if (text.length <= maxChars) return [text]
+/** Group partial results into merge batches that fit the configured token budget. */
+function createMergeBatches(partialResults: string[], maxTokens: number): string[][] {
+  if (partialResults.length === 0) return []
+
+  const mergeOverhead = countPromptTokens(buildMergePrompt([]))
+  const mergeBudget = Math.floor((maxTokens - mergeOverhead) * 0.98)
+
+  const batches: string[][] = []
+  let currentBatch: string[] = []
+  let currentTokens = 0
+
+  for (const result of partialResults) {
+    const resultTokens = countPromptTokens(`=== Chunk 1 result ===\n${result}\n`)
+
+    if (currentTokens + resultTokens <= mergeBudget) {
+      currentBatch.push(result)
+      currentTokens += resultTokens
+      continue
+    }
+
+    if (currentBatch.length === 0) {
+      batches.push([result])
+      continue
+    }
+
+    batches.push(currentBatch)
+    currentBatch = [result]
+    currentTokens = resultTokens
+  }
+
+  if (currentBatch.length > 0) {
+    batches.push(currentBatch)
+  }
+
+  return batches
+}
+
+// Prompt overhead tokens (instructions + schema + chunk note, without log content).
+// Computed once at startup so we only need to count log-text tokens per line.
+const PROMPT_OVERHEAD_TOKENS = countPromptTokens(buildChunkPromptForBudget(''))
+
+/**
+ * Split text into chunks where each chunk's full prompt stays under `maxTokens`.
+ *
+ * Uses O(n) incremental token counting: each line is tokenized once, and
+ * accumulated counts are summed rather than re-tokenizing the growing chunk.
+ * A small safety margin (2%) accounts for cross-boundary tokenization drift.
+ */
+function splitLogIntoChunks(text: string, maxTokens: number): string[] {
+  const logBudget = Math.floor((maxTokens - PROMPT_OVERHEAD_TOKENS) * 0.98)
+
+  if (logBudget <= 0) return [text]
+
+  const totalTokens = countPromptTokens(text)
+  if (totalTokens <= logBudget) return [text]
+
+  const rawLines = text.split('\n')
 
   const chunks: string[] = []
-  let offset = 0
-  while (offset < text.length) {
-    let end = offset + maxChars
-    if (end < text.length) {
-      // Try to break at a newline within the last 10% of the chunk
-      const searchStart = Math.max(offset, end - Math.floor(maxChars * 0.1))
-      const lastNewline = text.lastIndexOf('\n', end)
-      if (lastNewline > searchStart) {
-        end = lastNewline + 1
-      }
-    } else {
-      end = text.length
+  let current = ''
+  let currentTokens = 0
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const segment = i < rawLines.length - 1 ? `${rawLines[i]}\n` : rawLines[i]
+    const segTokens = countPromptTokens(segment)
+
+    if (currentTokens + segTokens <= logBudget) {
+      current += segment
+      currentTokens += segTokens
+      continue
     }
-    chunks.push(text.slice(offset, end))
-    offset = end
+
+    // Current chunk is full — flush it
+    if (current) {
+      chunks.push(current)
+    }
+
+    // If this single line exceeds the budget, push it alone
+    // (the LLM will see a slightly over-budget prompt, but it's one line)
+    current = segment
+    currentTokens = segTokens
   }
+
+  if (current) {
+    chunks.push(current)
+  }
+
   return chunks
 }
 
@@ -256,11 +342,19 @@ export async function analysisRoute(app: FastifyInstance) {
       reply.raw.setHeader('Connection', 'keep-alive')
       reply.raw.flushHeaders()
 
+      // Emit an early heartbeat/progress event before any heavy preprocessing
+      // so reverse proxies don't treat the upstream as idle.
+      sendEvent(reply.raw, 'progress', {
+        stage: 'preparing',
+        totalChunks: 0,
+        currentChunk: 0,
+      })
+
       let fullText = ''
       let finalStatus: 'complete' | 'error' | 'aborted' = 'complete'
 
       try {
-        const chunks = splitLogIntoChunks(scrubbedText, MAX_CHUNK_CHARS)
+        const chunks = splitLogIntoChunks(scrubbedText, MAX_CHUNK_TOKENS)
         const totalChunks = chunks.length
 
         sendEvent(reply.raw, 'progress', {
@@ -298,16 +392,44 @@ export async function analysisRoute(app: FastifyInstance) {
             partialResults.push(chunkResult)
           }
 
-          // ── Merge pass ──
+          // ── Merge pass(es): repeatedly merge in token-safe batches ──
           signal.throwIfAborted()
-          sendEvent(reply.raw, 'progress', { stage: 'merging', totalChunks, currentChunk: totalChunks })
+          let mergeRound = 1
+          let currentResults = partialResults
 
-          fullText = ''
-          const mergePrompt = buildMergePrompt(partialResults)
-          for await (const token of provider.stream(mergePrompt, signal)) {
-            fullText += token
-            sendEvent(reply.raw, 'token', { text: token })
+          while (currentResults.length > 1) {
+            sendEvent(reply.raw, 'progress', {
+              stage: 'merging',
+              totalChunks,
+              currentChunk: totalChunks,
+              mergeRound,
+            })
+
+            const batches = createMergeBatches(currentResults, MAX_CHUNK_TOKENS)
+            const nextResults: string[] = []
+
+            for (const batch of batches) {
+              signal.throwIfAborted()
+
+              if (batch.length === 1) {
+                nextResults.push(batch[0])
+                continue
+              }
+
+              let mergedBatchText = ''
+              const mergePrompt = buildMergePrompt(batch)
+              for await (const token of provider.stream(mergePrompt, signal)) {
+                mergedBatchText += token
+                sendEvent(reply.raw, 'token', { text: token })
+              }
+              nextResults.push(mergedBatchText)
+            }
+
+            currentResults = nextResults
+            mergeRound += 1
           }
+
+          fullText = currentResults[0] ?? ''
         }
 
         // Validate assembled output
