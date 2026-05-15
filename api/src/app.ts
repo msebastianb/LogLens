@@ -24,6 +24,7 @@ import { redis } from './services/redisClient.js'
  */
 export async function buildApp() {
   const app = Fastify({
+    bodyLimit: 10 * 1024 * 1024, // 10 MB
     logger: {
       level: env.LOG_LEVEL,
       // Redact credentials from all log output
@@ -80,7 +81,11 @@ export async function buildApp() {
 
   // ─── File upload support ───────────────────────────────────────────
   // Must be registered before logsRoute so req.file() is available.
-  await app.register(multipart)
+  await app.register(multipart, {
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10 MB
+    },
+  })
   await app.register(logsRoute)
   await app.register(scrubRoute)
   await app.register(analysisRoute)

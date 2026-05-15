@@ -34,6 +34,11 @@ const envSchema = z.object({
   // ─── Scrubbing ───────────────────────────────────────────────────
   SCRUBBER_URL: z.string().url().default('http://scrubber:8001'),
   MAX_LOG_SIZE_MB: z.coerce.number().positive().default(10),
+  /**
+    * Max input tokens per analysis chunk sent to the LLM.
+    * Set to 0 to disable chunking (single prompt for the full scrubbed text).
+   */
+  ANALYSIS_MAX_CHUNK_TOKENS: z.coerce.number().int().min(0).default(260000),
   SCRUBBER_TIMEOUT_MS: z.coerce.number().positive().default(30000),
 
   // ─── Auth tuning ─────────────────────────────────────────────────

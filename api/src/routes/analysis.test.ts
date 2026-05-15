@@ -53,6 +53,8 @@ vi.mock('../config/env.js', () => ({
     LOG_LEVEL: 'silent',
     LLM_PROVIDER: 'openai',
     LLM_API_KEY: 'test-key',
+    LLM_MODEL: 'gpt-5.4-mini',
+    ANALYSIS_MAX_CHUNK_TOKENS: 1000,
   },
 }))
 
@@ -390,13 +392,16 @@ describe('GET /api/v1/analysis-jobs/:id/stream', () => {
     const events = parseSSE(res.body)
     const progressEvents = events.filter(e => e.event === 'progress')
     expect(progressEvents.length).toBeGreaterThanOrEqual(1)
-    expect((progressEvents[0].data as { stage: string; totalChunks: number }).stage).toBe('analysing')
-    expect((progressEvents[0].data as { totalChunks: number }).totalChunks).toBe(1)
+    const firstAnalysing = progressEvents.find(
+      e => (e.data as { stage: string }).stage === 'analysing',
+    )
+    expect(firstAnalysing).toBeDefined()
+    expect((firstAnalysing?.data as { totalChunks: number }).totalChunks).toBe(1)
   })
 
   it('splits large logs into multiple chunks and emits merge progress', async () => {
-    // Create text that exceeds MAX_CHUNK_CHARS (3.9M) so it splits into 2 chunks
-    const bigLog = 'A'.repeat(4_000_000) + '\n' + 'B'.repeat(100)
+    // Create many unique words so token count reliably exceeds chunk limit.
+    const bigLog = Array.from({ length: 3500 }, (_, i) => `line-${i} error timeout service-${i}`).join('\n')
 
     // Track how many times stream() is called
     let streamCallCount = 0
@@ -434,9 +439,13 @@ describe('GET /api/v1/analysis-jobs/:id/stream', () => {
     )
     expect(mergeEvent).toBeDefined()
 
-    // LLM should have been called 4 times: chunk 1, chunk 2, chunk 3, merge
-    // (4M chars / 1.57M MAX_CHUNK_CHARS ≈ 3 chunks)
-    expect(streamCallCount).toBe(4)
+    // LLM is called once per analysed chunk plus one or more merge calls
+    // depending on how many token-safe merge rounds are required.
+    const analysedChunkEvents = progressEvents.filter(
+      e => (e.data as { stage: string; currentChunk: number }).stage === 'analysing'
+        && (e.data as { currentChunk: number }).currentChunk > 0,
+    )
+    expect(streamCallCount).toBeGreaterThan(analysedChunkEvents.length)
 
     // Should still emit complete event
     const completeEvents = events.filter(e => e.event === 'complete')
